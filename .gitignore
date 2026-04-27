@@ -1,23 +1,8 @@
-# Compiled
-prog
+# Compiled binaries
+pricer
+pricer.exe
 *.o
 *.out
-*.exe
-
-# LaTeX artifacts
-*.aux
-*.log
-*.toc
-*.synctex.gz
-Rapport.pdf
-Rapport.tex
-
-# Original submission folder
-VAITHILINGAM_CHEYMOL_projet_bs/
-
-# Doxygen output
-html/
-latex/
 
 # OS
 .DS_Store
