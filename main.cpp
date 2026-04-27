@@ -1,110 +1,155 @@
 #include <iostream>
-#include <vector>
+#include <iomanip>
 #include <cmath>
-#include <algorithm>
-#include <memory>
-#include <numeric> 
+#include <vector>
+#include <string>
 
-#include "Payoff.hpp"
-#include "EDP.hpp"
-#include "Res_full.hpp"
-#include "Res_red.hpp"
-#include "SDL.hpp"
+#include "Option.hpp"
+#include "Grid.hpp"
+#include "Solver.hpp"
+#include "CrankNicolson.hpp"
+#include "ReducedCN.hpp"
+#include "Greeks.hpp"
+#include "BSFormula.hpp"
 
-// Fonction pour calculer l'erreur absolue entre deux vecteurs
-std::vector<double> compute_error(const std::vector<double>& v1, const std::vector<double>& v2) {
-    std::vector<double> err(v1.size());
-    for(size_t i=0; i<v1.size(); ++i) {
-        err[i] = std::abs(v1[i] - v2[i]);
-    }
-    return err;
+// =============================================================================
+//  Problem parameters
+// =============================================================================
+static constexpr double S_MAX = 300.0;   // upper spatial boundary (= 3 * K)
+static constexpr double T     = 1.0;     // maturity in years
+static constexpr double r     = 0.05;    // risk-free rate (annualised)
+static constexpr double sigma = 0.20;    // volatility (annualised)
+static constexpr double K     = 100.0;   // strike price
+static constexpr int    N     = 1000;    // number of spatial steps
+static constexpr int    M     = 1000;    // number of time steps
+
+// =============================================================================
+//  Display helpers
+// =============================================================================
+
+// Classify a spot as ITM / ATM / OTM.
+// A 2% band around K is used as the ATM region to avoid false classification
+// due to the discrete grid spacing.
+static std::string moneyness(double S, double strike, bool is_call) {
+    const bool itm = is_call ? (S > strike * 1.02) : (S < strike * 0.98);
+    const bool otm = is_call ? (S < strike * 0.98) : (S > strike * 1.02);
+    if (itm) return "[ITM]";
+    if (otm) return "[OTM]";
+    return "[ATM]";
 }
 
-// Fonction pour afficher les statistiques (Min, Max, Ecart-type)
-void print_stats(const std::string& label, const std::vector<double>& data) {
-    if (data.empty()) return;
+// Print FD price and all Greeks for a given spot, side-by-side with the
+// closed-form BS values so the approximation error is immediately visible.
+static void print_spot(const Grid& grid, const Greeks& g,
+                       const BSParams& p, double S0, double strike, bool is_call) {
+    // Find the closest interior grid node to S0.
+    int i0 = static_cast<int>(std::round(S0 / grid.dS()));
+    i0 = std::max(1, std::min(i0, grid.N() - 1));
 
-    // Calcul Min et Max
-    double min_val = *std::min_element(data.begin(), data.end());
-    double max_val = *std::max_element(data.begin(), data.end());
+    const double tau  = p.T;   // evaluated at t=0, so tau = T
+    const double V_fd = grid[i0];
+    const double V_bs = is_call ? BSAnalytical::call_price(S0, strike, p.r, p.sigma, tau)
+                                : BSAnalytical::put_price (S0, strike, p.r, p.sigma, tau);
 
-    // Calcul Moyenne
-    double sum = std::accumulate(data.begin(), data.end(), 0.0);
-    double mean = sum / data.size();
-
-    // Calcul Ecart-type
-    double sq_sum = 0.0;
-    for (double x : data) {
-        sq_sum += (x - mean) * (x - mean);
-    }
-    double std_dev = std::sqrt(sq_sum / data.size());
-
-    std::cout << "--- Statistiques " << label << " ---\n";
-    std::cout << "  Min        : " << min_val << "\n";
-    std::cout << "  Max        : " << max_val << "\n";
-    std::cout << "  Moyenne    : " << mean << "\n";
-    std::cout << "  Ecart-type : " << std_dev << "\n";
+    std::cout << std::fixed << std::setprecision(5);
+    std::cout << "  S = " << std::setw(6) << S0 << "  " << moneyness(S0, strike, is_call) << "\n";
+    std::cout << "    Price  FD = " << std::setw(9) << V_fd
+              << "   BS = " << std::setw(9) << V_bs
+              << "   err = " << std::setw(9) << std::abs(V_fd - V_bs) << "\n";
+    std::cout << "    Delta  FD = " << std::setw(9) << g.delta[i0]
+              << "   BS = " << std::setw(9)
+              << (is_call ? BSAnalytical::call_delta(S0, strike, p.r, p.sigma, tau)
+                          : BSAnalytical::put_delta (S0, strike, p.r, p.sigma, tau)) << "\n";
+    std::cout << "    Gamma  FD = " << std::setw(9) << g.gamma[i0]
+              << "   BS = " << std::setw(9)
+              << BSAnalytical::gamma(S0, strike, p.r, p.sigma, tau) << "\n";
+    std::cout << "    Theta  FD = " << std::setw(9) << g.theta[i0] / 365.0
+              << "   BS = " << std::setw(9)
+              << (is_call ? BSAnalytical::call_theta(S0, strike, p.r, p.sigma, tau) / 365.0
+                          : BSAnalytical::put_theta (S0, strike, p.r, p.sigma, tau) / 365.0)
+              << "  (daily)\n";
+    std::cout << "    Vega   FD = " << std::setw(9) << g.vega[i0]
+              << "   BS = " << std::setw(9)
+              << BSAnalytical::vega(S0, strike, p.r, p.sigma, tau) << "\n";
+    std::cout << "    Rho    FD = " << std::setw(9) << g.rho[i0]
+              << "   BS = " << std::setw(9)
+              << (is_call ? BSAnalytical::call_rho(S0, strike, p.r, p.sigma, tau)
+                          : BSAnalytical::put_rho (S0, strike, p.r, p.sigma, tau)) << "\n";
+    std::cout << "\n";
 }
 
-int main(int argc, char* argv[]) {
-    (void)argc;
-    (void)argv;
-    
-    const double T = 1.0, r = 0.1, sigma = 0.1, K = 100.0, L = 300.0;
-    const int M = 1000, N = 1000;
+// Run a solver on an option, compute all Greeks, and print results for each spot.
+static void run_option(Solver& solver, const Option& opt,
+                       const BSParams& params,
+                       const std::vector<double>& spots) {
+    Grid grid(S_MAX, T, N, M);
+    solver.solve(grid, opt, params);
 
-    // Boucle sur les deux types d'options : Put et Call
-    std::vector<std::unique_ptr<Payoff>> payoffs;
-    payoffs.push_back(std::make_unique<Put>(K));
-    payoffs.push_back(std::make_unique<Call>(K));
+    // GreeksCalculator holds a reference to solver for bump-and-reprice Greeks.
+    GreeksCalculator g_calc(solver);
+    Greeks g = g_calc.compute(grid, opt, params);
 
-    for (auto& pay : payoffs) {
-        std::string type = dynamic_cast<Put*>(pay.get()) ? "Put" : "Call";
+    std::cout << "  [" << solver.name() << "]\n\n";
+    for (double S : spots)
+        print_spot(grid, g, params, S, opt.strike(), opt.is_call());
+}
 
-        // Résolution Complète
-        std::cout << "Calcul EDP complete..." << std::endl;
-        EDP edp_full(T, r, sigma, L, M, N, *pay);
-        ResolutionFull solver_full(edp_full);
-        solver_full.solve();
-        const auto& Cfull = edp_full.solution();
-        const auto& S_grid = edp_full.S();
+// =============================================================================
+//  Convergence analysis (uncomment to run)
+// =============================================================================
+//
+//  Sweep N in {50, 100, 200, 500, 1000} with M = N and compute the L-inf
+//  error against BSAnalytical::call_price over all interior nodes.
+//  Plot log2(error) vs log2(N): expected slope ≈ -2 (CN is 2nd-order).
+//  Compare CrankNicolson (uniform S-grid) vs ReducedCN (log-uniform grid).
+//
+//  static double max_error(Solver& solver, int Ni, const BSParams& p) {
+//      EuropeanCall call(K);
+//      Grid grid(S_MAX, T, Ni, Ni);
+//      solver.solve(grid, call, p);
+//      double err = 0.0;
+//      for (int i = 1; i < Ni; ++i) {
+//          double ref = BSAnalytical::call_price(grid.S(i), K, p.r, p.sigma, p.T);
+//          err = std::max(err, std::abs(grid[i] - ref));
+//      }
+//      return err;
+//  }
+//
+//  CrankNicolson cn;  ReducedCN rcn;
+//  for (int Ni : {50, 100, 200, 500, 1000})
+//      std::cout << "N=" << Ni
+//                << "  CN="  << max_error(cn,  Ni, params)
+//                << "  RCN=" << max_error(rcn, Ni, params) << "\n";
 
-        //Résolution Réduite
-        std::cout << "Calcul EDP reduite..." << std::endl;
-        EDP edp_red(T, r, sigma, L, M, N, *pay);
-        ResolutionReduced solver_red(edp_red);
-        solver_red.solve();
-        const auto& Cred = edp_red.solution();
+// =============================================================================
+//  main
+// =============================================================================
+int main() {
+    const BSParams params{r, sigma, T};
 
-        //Affichage console au strike K
-        int idxK = static_cast<int>(K / (L / N));
-        std::cout << "\nPrix au strike K (" << K << ") :\n";
-        std::cout << "  C_full(0,K) = " << Cfull[idxK] << "\n";
-        std::cout << "  C_red(0,K)  = " << Cred[idxK] << "\n\n";
+    CrankNicolson cn;    // standard CN on uniform S-grid
+    ReducedCN     rcn;   // CN on log-uniform grid (constant coefficients)
 
-        //Calcul de l'erreur absolue
-        std::vector<double> diff = compute_error(Cfull, Cred);
+    // Representative spots: OTM, ATM, ITM
+    const std::vector<double> call_spots = { 70.0, 100.0, 130.0};
+    const std::vector<double> put_spots  = {130.0, 100.0,  70.0};
 
-        //Affichage des Statistiques
-        print_stats("Methode Complete", Cfull);
-        print_stats("Methode Reduite ", Cred);
-        print_stats("Erreur Absolue " + type, diff);
+    // -- European Call ---------------------------------------------------------
+    {
+        EuropeanCall call(K);
+        std::cout << "== European Call  (K=" << K << ", T=" << T
+                  << ", sigma=" << sigma << ", r=" << r << ") ==\n\n";
+        run_option(cn,  call, params, call_spots);
+        run_option(rcn, call, params, call_spots);
+    }
 
-        //Affichage SDL
-        Sdl sdl;
-
-        // Fenêtre 1 : courbes superposées
-        sdl.w1 = std::make_unique<Window>("C(0,S) - " + type, 800, 600);
-        sdl.w1->add_curve(S_grid, Cfull, 0, 0, 255);   // Bleu : complète
-        sdl.w1->add_curve(S_grid, Cred, 255, 0, 0);    // Rouge : réduite
-
-        // Fenêtre 2 : erreur absolue
-        sdl.w2 = std::make_unique<Window>("Erreur absolue - " + type, 800, 600);
-        sdl.w2->add_curve(S_grid, diff, 0, 255, 0);    // Vert
-
-        // Affichage des fênetres
-        sdl.show();
-        sdl.wait_for_close();
+    // -- European Put ----------------------------------------------------------
+    {
+        EuropeanPut put(K);
+        std::cout << "== European Put   (K=" << K << ", T=" << T
+                  << ", sigma=" << sigma << ", r=" << r << ") ==\n\n";
+        run_option(cn,  put, params, put_spots);
+        run_option(rcn, put, params, put_spots);
     }
 
     return 0;
