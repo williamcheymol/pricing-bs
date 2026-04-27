@@ -1,5 +1,7 @@
 # Black-Scholes PDE Pricer — C++
 
+![Status](https://img.shields.io/badge/status-Phase%200%20complete-success)
+
 A C++ implementation of European option pricing by solving the Black-Scholes PDE numerically,
 with two independent finite-difference schemes, full Greeks computation, and validation against
 closed-form analytical formulas.
