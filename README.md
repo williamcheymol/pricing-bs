@@ -59,8 +59,8 @@ After solving, $V(x_i)$ is interpolated back onto the uniform $S$-grid for outpu
 
 | Greek | Method | Cost |
 |-------|--------|------|
-| $\Delta = \partial V / \partial S$ | Central FD on solved grid | Free |
-| $\Gamma = \partial^2 V / \partial S^2$ | Central FD on solved grid | Free |
+| $\Delta = \partial V / \partial S$ | Central finite differences on solved grid | Free |
+| $\Gamma = \partial^2 V / \partial S^2$ | Central finite differences on solved grid | Free |
 | $\Theta = \partial V / \partial t$ | PDE identity: $\Theta = -\mathcal{L}[V]$ | Free |
 | $\nu = \partial V / \partial \sigma$ | Bump-and-reprice $\sigma \pm \varepsilon$ | 2 solver calls |
 | $\rho = \partial V / \partial r$ | Bump-and-reprice $r \pm \varepsilon$ | 2 solver calls |
@@ -76,8 +76,8 @@ All Greeks are validated against closed-form Black-Scholes formulas (`BSFormula.
 
 | Metric | Value |
 |--------|-------|
-| European Call ATM (K=100, T=1, σ=20%, r=5%) | FD = 10.387, BS = 10.451 |
-| FD–BS error ($N = M = 1000$) | $\sim 10^{-2}$ |
+| European Call ATM (K=100, T=1, σ=20%, r=5%) | CN = 10.387, BS = 10.451 |
+| CN–BS pricing error ($N = M = 1000$) | $\sim 10^{-2}$ |
 | Early-exercise premium at S=58, T=1 | American Put − European Put ≈ +12.6 |
 | UOC vs Vanilla Call at S=110, T=1 | Knock-out discount ≈ −55% |
 | Digital put-call parity error | < $10^{-4}$ (smoothed payoff) |
@@ -87,7 +87,7 @@ All Greeks are validated against closed-form Black-Scholes formulas (`BSFormula.
 ## Features
 
 **Pricing**
-- Black-Scholes call and put pricing (FD + analytical)
+- Black-Scholes call and put pricing (CN Solver + analytical)
 - Full Greeks: delta, gamma, theta, vega, rho
 - Put-call parity and analytical validation
 
@@ -98,7 +98,7 @@ All Greeks are validated against closed-form Black-Scholes formulas (`BSFormula.
 - American Put — early-exercise projection at each time step
 
 **Numerical**
-- Two independent FD schemes: Crank-Nicolson and Reduced CN (log-space)
+- Two independent finite-difference schemes: Crank-Nicolson and Reduced CN (log-space)
 - $O(N)$ Thomas algorithm for tridiagonal systems
 - Payoff smoothing (sigmoid) to suppress Gibbs oscillations at discontinuities
 
@@ -114,28 +114,23 @@ All Greeks are validated against closed-form Black-Scholes formulas (`BSFormula.
 
 ```
 BS-Pricer/
-├── main.cpp                # Console driver: Europeans + all exotic types
+├── main.cpp                    # Console driver: Europeans + all exotic types
 │
-├── main_viz.cpp            # Entry point for the SDL2 interactive visualizer
-├── Visualizer.hpp/.cpp     # Full SDL2 visualizer — 6 modes, live controls, hover tooltip
+├── src/
+│   ├── Option.hpp              # Abstract Option interface + 6 concrete payoff classes
+│   ├── Grid.hpp / Grid.cpp     # Uniform (S, t) grid — storage, initialisation, BCs
+│   ├── Solver.hpp              # Abstract Solver interface + BSParams struct
+│   ├── CrankNicolson.hpp/.cpp  # CN scheme on uniform S-grid (variable coefficients)
+│   ├── ReducedCN.hpp/.cpp      # CN scheme on log-uniform x-grid (constant coefficients)
+│   ├── Greeks.hpp / Greeks.cpp # Delta, Gamma, Theta (finite differences) + Vega, Rho
+│   ├── BSFormula.hpp/.cpp      # Closed-form BS pricing and Greeks (analytical reference)
+│   └── Thomas.hpp / Thomas.cpp # O(N) tridiagonal solver (Thomas algorithm)
 │
-├── Option.hpp              # Abstract Option interface + 6 concrete payoff classes:
-│                           #   EuropeanCall, EuropeanPut, DigitalCall, DigitalPut,
-│                           #   BarrierKnockOutCall, AmericanPut
+├── viz/
+│   ├── Visualizer.hpp/.cpp     # Full SDL2 visualizer — 6 modes, live controls, hover
+│   └── main_viz.cpp            # Entry point for the SDL2 interactive visualizer
 │
-├── Grid.hpp / Grid.cpp     # Uniform (S, t) grid — storage, initialisation, BCs
-│
-├── Solver.hpp              # Abstract Solver interface + BSParams struct
-│
-├── CrankNicolson.hpp/.cpp  # CN scheme on uniform S-grid (variable coefficients)
-├── ReducedCN.hpp/.cpp      # CN scheme on log-uniform x-grid (constant coefficients)
-│
-├── Greeks.hpp / Greeks.cpp # Delta, Gamma, Theta (FD) + Vega, Rho (bump-and-reprice)
-├── BSFormula.hpp/.cpp      # Closed-form BS pricing and Greeks (analytical reference)
-│
-├── Thomas.hpp / Thomas.cpp # O(N) tridiagonal solver (Thomas algorithm)
-│
-├── Graphiques/             # Screenshots for the visualizer modes
+├── Graphiques/                 # Screenshots for the visualizer modes
 └── Makefile
 ```
 
@@ -171,17 +166,14 @@ make viz
 
 ## Interactive visualizer
 
-The visualizer runs the finite-difference solver live and redraws the price curve whenever a parameter changes.
+The visualizer runs the CN Solver live and redraws the price curve whenever a parameter changes.
 Mouse hover shows a crosshair and the exact $(S, V)$ values for every visible curve.
 
-### Side panel
+### Side panel & keyboard controls
 
-![Side panel](Graphiques/Menu.png)
-
-The side panel shows live model parameters, ATM values for the active mode, and the full mode list.
-The solver name (Crank-Nicolson or Reduced CN) is shown in green and toggled with `R`.
-
-### Keyboard controls
+<table>
+<tr>
+<td valign="top">
 
 | Key | Action | Range |
 |-----|--------|-------|
@@ -190,11 +182,21 @@ The solver name (Crank-Nicolson or Reduced CN) is shown in green and toggled wit
 | `←` / `→` | Risk-free rate $r$ ± 0.005 | 0.001 – 0.20 |
 | `W` / `S` | Time to maturity $T$ ± 0.1 yr | 0.1 – 5.0 |
 | `A` / `D` | Strike $K$ ± 5 | 5 – 240 |
-| `R` | Toggle solver: Crank-Nicolson ↔ Reduced CN | |
+| `R` | Toggle solver: CN ↔ Reduced CN | |
 | `M` | Toggle main curve visibility | |
 | `O` | Toggle overlay curve visibility | |
-| `G` | Toggle payoff smoothing — shows/hides Gibbs oscillations (Digital mode) | |
+| `G` | Toggle payoff smoothing (Digital mode) | |
 | `ESC` / `Q` | Quit | |
+
+The side panel shows live model parameters, ATM values for the active mode,
+and the full mode list. The solver name is shown in green and toggled with `R`.
+
+</td>
+<td>
+<img src="Graphiques/Menu.png" width="260">
+</td>
+</tr>
+</table>
 
 ---
 
@@ -202,70 +204,133 @@ The solver name (Crank-Nicolson or Reduced CN) is shown in green and toggled wit
 
 ### Mode 1 — European Call
 
-FD price curve (gold) overlaid with the Black-Scholes analytical formula (cyan).
-The intrinsic value $\max(S - K, 0)$ is shown as a dashed reference.
-Both curves are nearly indistinguishable, confirming the FD accuracy.
+<table>
+<tr>
+<td valign="top" width="40%">
 
-![European Call](Graphiques/E_Call.png)
+The CN Solver curve (gold) is overlaid with the Black-Scholes analytical formula (cyan).
+The intrinsic value $\max(S - K, 0)$ is shown as a dashed reference.
+Both curves are nearly indistinguishable, confirming the solver accuracy.
+
+</td>
+<td>
+<img src="Graphiques/E_Call.png" width="430">
+</td>
+</tr>
+</table>
 
 ---
 
 ### Mode 2 — European Put
 
-FD price curve (gold) vs analytical BS formula (cyan). The hover tooltip reads off both values simultaneously —
-here at $S = 90$: FD gives 49.3000, BS gives 49.2996, an error of 0.0004.
+<table>
+<tr>
+<td valign="top" width="40%">
 
-![European Put](Graphiques/E_Put.png)
+CN Solver (gold) vs analytical BS formula (cyan). The hover tooltip reads off both values simultaneously —
+here at $S = 90$: CN gives 49.3000, BS gives 49.2996, an error of 0.0004.
+
+</td>
+<td>
+<img src="Graphiques/E_Put.png" width="430">
+</td>
+</tr>
+</table>
 
 ---
 
 ### Mode 3 — Digital Options (smoothed)
 
+<table>
+<tr>
+<td valign="top" width="40%">
+
 Digital Call (gold) and Digital Put (cyan) plotted together. The two curves sum to the discount factor
 $e^{-rT}$ at all spot prices, verifying **put-call parity** for digital options.
 Payoff smoothing (sigmoid of width $\Delta S$) eliminates Gibbs oscillations at the strike.
 
-![Digital Options — smoothed](Graphiques/Digital.png)
+</td>
+<td>
+<img src="Graphiques/Digital.png" width="430">
+</td>
+</tr>
+</table>
 
 ---
 
 ### Mode 3 — Digital Options (Gibbs phenomenon)
 
+<table>
+<tr>
+<td valign="top" width="40%">
+
 Pressing `G` switches to the raw step-function payoff. The **Gibbs phenomenon** becomes visible:
-the Crank-Nicolson scheme produces ringing oscillations near the discontinuity at the strike.
+the CN scheme produces ringing oscillations near the discontinuity at the strike.
 This is a well-known artefact of applying a smooth numerical scheme to a discontinuous boundary condition.
 
-![Digital Options — Gibbs phenomenon](Graphiques/Gibbs.png)
+</td>
+<td>
+<img src="Graphiques/Gibbs.png" width="430">
+</td>
+</tr>
+</table>
 
 ---
 
 ### Mode 4 — American Put vs European Put
 
+<table>
+<tr>
+<td valign="top" width="40%">
+
 The American Put (gold) strictly dominates the European Put (cyan) for $S < K$, since early exercise
 may be optimal when the option is deep in-the-money. The gap is the **early-exercise premium** —
 here ~12.6 at $S = 58$. Both curves converge to the intrinsic payoff $\max(K - S, 0)$ for $S \to 0$.
 
-![American Put vs European Put](Graphiques/A_Put.png)
+</td>
+<td>
+<img src="Graphiques/A_Put.png" width="430">
+</td>
+</tr>
+</table>
 
 ---
 
 ### Mode 5 — Up-and-Out Call
 
+<table>
+<tr>
+<td valign="top" width="40%">
+
 The UOC (gold) is worth significantly less than the Vanilla Call (cyan): the holder loses everything
 if the spot ever crosses the barrier $H = 1.5K$ (red dashed line). The UOC price peaks between
 strike and barrier then collapses to zero — the classic **barrier smile** shape.
 
-![Up-and-Out Call](Graphiques/UOC.png)
+</td>
+<td>
+<img src="Graphiques/UOC.png" width="430">
+</td>
+</tr>
+</table>
 
 ---
 
 ### Mode 6 — Down-and-Out Put
 
+<table>
+<tr>
+<td valign="top" width="40%">
+
 The DOP (gold) is knocked out if the spot falls below $H = 0.8K$ (red dashed line).
 This eliminates most of the put's deep ITM value: the DOP price is a narrow hump concentrated
 in the corridor $[H, K]$, far below the Vanilla Put (cyan).
 
-![Down-and-Out Put](Graphiques/DOP.png)
+</td>
+<td>
+<img src="Graphiques/DOP.png" width="430">
+</td>
+</tr>
+</table>
 
 ---
 
@@ -277,15 +342,15 @@ in the corridor $[H, K]$, far below the Vanilla Put (cyan).
   [Crank-Nicolson]
 
   S = 70.00000  [OTM]
-    Price  FD =   0.43398   BS =   0.44145   err =   0.00747
-    Delta  FD =   0.07487   BS =   0.07588
-    Gamma  FD =   0.01011   BS =   0.01020
-    Theta  FD =  -0.00336   BS =  -0.00341  (daily)
-    Vega   FD =   9.87998   BS =   9.99690
-    Rho    FD =   4.79958   BS =   4.86983
+    Price  CN =   0.43398   BS =   0.44145   err =   0.00747
+    Delta  CN =   0.07487   BS =   0.07588
+    Gamma  CN =   0.01011   BS =   0.01020
+    Theta  CN =  -0.00336   BS =  -0.00341  (daily)
+    Vega   CN =   9.87998   BS =   9.99690
+    Rho    CN =   4.79958   BS =   4.86983
 
   S = 100.00000  [ATM]
-    Price  FD =  10.38696   BS =  10.45058   err =   0.06362
+    Price  CN =  10.38696   BS =  10.45058   err =   0.06362
     ...
 ```
 
@@ -345,7 +410,7 @@ or visualizer code.
 
 ## Roadmap
 
-**Phase 0 ✓** — European options, two FD schemes, full Greeks, analytical validation.
+**Phase 0 ✓** — European options, two finite-difference schemes, full Greeks, analytical validation.
 
 **Phase 1 ✓** — Exotic options:
 - Digital Call / Put with Gibbs smoothing
@@ -359,11 +424,11 @@ or visualizer code.
 
 **Phase 3 — in progress (on hold pending market data fetcher):**
 
-The next step is to validate the model against **real market data**: extract live option prices and implied volatilities, calibrate $\sigma$ to the market smile, and compare the FD pricer output to observed quotes.
+The next step is to validate the model against **real market data**: extract live option prices and implied volatilities, calibrate $\sigma$ to the market smile, and compare the CN Solver output to observed quotes.
 This phase is blocked on a separate market-data fetcher project (under development) that will supply the option chains and historical price series.
 
 Planned features once the fetcher is ready:
 - **Implied volatility extraction** — invert the BS formula to recover $\sigma_\text{impl}(K, T)$ from market option prices
 - **Volatility smile / surface** — visualize the smile and term structure of implied vol
-- **Model validation** — compare FD prices to market quotes across strikes and maturities
+- **Model validation** — compare CN Solver prices to market quotes across strikes and maturities
 - **Dupire local-volatility** — calibrate $\sigma(S,t)$ from the surface and solve the resulting non-constant-coefficient PDE
