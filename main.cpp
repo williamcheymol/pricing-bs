@@ -53,25 +53,25 @@ static void print_spot(const Grid& grid, const Greeks& g,
 
     std::cout << std::fixed << std::setprecision(5);
     std::cout << "  S = " << std::setw(6) << S0 << "  " << moneyness(S0, strike, is_call) << "\n";
-    std::cout << "    Price  FD = " << std::setw(9) << V_fd
+    std::cout << "    Price  CN = " << std::setw(9) << V_fd
               << "   BS = " << std::setw(9) << V_bs
               << "   err = " << std::setw(9) << std::abs(V_fd - V_bs) << "\n";
-    std::cout << "    Delta  FD = " << std::setw(9) << g.delta[i0]
+    std::cout << "    Delta  CN = " << std::setw(9) << g.delta[i0]
               << "   BS = " << std::setw(9)
               << (is_call ? BSAnalytical::call_delta(S0, strike, p.r, p.sigma, tau)
                           : BSAnalytical::put_delta (S0, strike, p.r, p.sigma, tau)) << "\n";
-    std::cout << "    Gamma  FD = " << std::setw(9) << g.gamma[i0]
+    std::cout << "    Gamma  CN = " << std::setw(9) << g.gamma[i0]
               << "   BS = " << std::setw(9)
               << BSAnalytical::gamma(S0, strike, p.r, p.sigma, tau) << "\n";
-    std::cout << "    Theta  FD = " << std::setw(9) << g.theta[i0] / 365.0
+    std::cout << "    Theta  CN = " << std::setw(9) << g.theta[i0] / 365.0
               << "   BS = " << std::setw(9)
               << (is_call ? BSAnalytical::call_theta(S0, strike, p.r, p.sigma, tau) / 365.0
                           : BSAnalytical::put_theta (S0, strike, p.r, p.sigma, tau) / 365.0)
               << "  (daily)\n";
-    std::cout << "    Vega   FD = " << std::setw(9) << g.vega[i0]
+    std::cout << "    Vega   CN = " << std::setw(9) << g.vega[i0]
               << "   BS = " << std::setw(9)
               << BSAnalytical::vega(S0, strike, p.r, p.sigma, tau) << "\n";
-    std::cout << "    Rho    FD = " << std::setw(9) << g.rho[i0]
+    std::cout << "    Rho    CN = " << std::setw(9) << g.rho[i0]
               << "   BS = " << std::setw(9)
               << (is_call ? BSAnalytical::call_rho(S0, strike, p.r, p.sigma, tau)
                           : BSAnalytical::put_rho (S0, strike, p.r, p.sigma, tau)) << "\n";
