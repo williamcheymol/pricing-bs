@@ -171,10 +171,6 @@ Mouse hover shows a crosshair and the exact $(S, V)$ values for every visible cu
 
 ### Side panel & keyboard controls
 
-<table>
-<tr>
-<td valign="top">
-
 | Key | Action | Range |
 |-----|--------|-------|
 | `1`–`6` | Switch display mode | |
@@ -190,13 +186,6 @@ Mouse hover shows a crosshair and the exact $(S, V)$ values for every visible cu
 
 The side panel shows live model parameters, ATM values for the active mode,
 and the full mode list. The solver name is shown in green and toggled with `R`.
-
-</td>
-<td>
-<img src="Graphiques/Menu.png" width="260">
-</td>
-</tr>
-</table>
 
 ---
 
@@ -225,14 +214,14 @@ Both curves are nearly indistinguishable, confirming the solver accuracy.
 
 <table>
 <tr>
+<td>
+<img src="Graphiques/E_Put.png" width="430">
+</td>
 <td valign="top" width="40%">
 
 CN Solver (gold) vs analytical BS formula (cyan). The hover tooltip reads off both values simultaneously —
 here at $S = 90$: CN gives 49.3000, BS gives 49.2996, an error of 0.0004.
 
-</td>
-<td>
-<img src="Graphiques/E_Put.png" width="430">
 </td>
 </tr>
 </table>
@@ -262,15 +251,15 @@ Payoff smoothing (sigmoid of width $\Delta S$) eliminates Gibbs oscillations at 
 
 <table>
 <tr>
+<td>
+<img src="Graphiques/Gibbs.png" width="430">
+</td>
 <td valign="top" width="40%">
 
 Pressing `G` switches to the raw step-function payoff. The **Gibbs phenomenon** becomes visible:
 the CN scheme produces ringing oscillations near the discontinuity at the strike.
 This is a well-known artefact of applying a smooth numerical scheme to a discontinuous boundary condition.
 
-</td>
-<td>
-<img src="Graphiques/Gibbs.png" width="430">
 </td>
 </tr>
 </table>
@@ -300,15 +289,15 @@ here ~12.6 at $S = 58$. Both curves converge to the intrinsic payoff $\max(K - S
 
 <table>
 <tr>
+<td>
+<img src="Graphiques/UOC.png" width="430">
+</td>
 <td valign="top" width="40%">
 
 The UOC (gold) is worth significantly less than the Vanilla Call (cyan): the holder loses everything
 if the spot ever crosses the barrier $H = 1.5K$ (red dashed line). The UOC price peaks between
 strike and barrier then collapses to zero — the classic **barrier smile** shape.
 
-</td>
-<td>
-<img src="Graphiques/UOC.png" width="430">
 </td>
 </tr>
 </table>
