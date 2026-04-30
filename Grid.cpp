@@ -1,8 +1,8 @@
 #include "Grid.hpp"
 
-Grid::Grid(double S_max, double T, int N, int M)
-    : S_max_(S_max), T_(T), N_(N), M_(M),
-      dS_(S_max / N),
+Grid::Grid(double S_max, double T, int N, int M, double S_min)
+    : S_min_(S_min), S_max_(S_max), T_(T), N_(N), M_(M),
+      dS_((S_max - S_min) / N),
       dt_(T / M),
       V_(N + 1, 0.0)
 {}

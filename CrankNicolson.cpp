@@ -29,8 +29,8 @@ void CrankNicolson::step(Grid& grid, const Option& opt, const BSParams& p, doubl
     std::vector<double> lower(n), diag(n), upper(n), rhs(n);
 
     for (int k = 0; k < n; ++k) {
-        const int    i  = k + 1;    // true grid index
-        const double Si = i * dS;   // spot price at node i
+        const int    i  = k + 1;        // true grid index
+        const double Si = grid.S(i);    // S_min + i * dS  (correct for down barriers)
 
         // -- Spatial operator coefficients L[V]_i = a_i*V_{i-1} + b_i*V_i + c_i*V_{i+1}
         //
@@ -77,4 +77,20 @@ void CrankNicolson::step(Grid& grid, const Option& opt, const BSParams& p, doubl
     // Write interior solution back to the grid
     for (int k = 0; k < n; ++k)
         grid[k + 1] = sol[k];
+
+    // Early-exercise projection (American options) --------------------
+    //
+    //  After the Thomas solve, grid[i] holds the "continuation value" V*_i —
+    //  what the option is worth if the holder does NOT exercise today.
+    //
+    //  For American options, the holder compares this with the intrinsic value
+    //  (the payoff from exercising immediately). The option is worth the max:
+    //
+    //      V_i = max(V*_i,  opt.intrinsic(S_i))
+    //
+    //  For European options, opt.intrinsic() always returns 0.0 so this step
+    //  is a no-op — implement it unconditionally and it works for everyone.
+    //
+    for (int i = 0; i <= N; ++i)
+        grid[i] = std::max(grid[i], opt.intrinsic(grid.S(i)));
 }

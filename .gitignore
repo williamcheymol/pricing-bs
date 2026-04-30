@@ -1,8 +1,16 @@
 # Compiled binaries
 pricer
 pricer.exe
+pricer_viz
+pricer_viz.exe
 *.o
 *.out
+
+# SDL2 runtime DLLs (installed locally via MSYS2, not part of the source)
+*.dll
+
+# Claude Code
+.claude/
 
 # OS
 .DS_Store
