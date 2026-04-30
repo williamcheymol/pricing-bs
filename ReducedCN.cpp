@@ -15,25 +15,22 @@ static inline int iclamp(int v, int lo, int hi) {
 
 void ReducedCN::solve(Grid& grid, const Option& opt, const BSParams& p) {
     const int    N     = grid.N();
+    const double S_min = grid.S_min();
     const double S_max = grid.S_max();
     const double T     = p.T;
     const int    M     = grid.M();
     const double dt    = T / M;
-    const double dS    = S_max / N;
+    const double dS    = grid.dS();   // (S_max - S_min) / N
 
     // -- Build the log-uniform grid  x in [x_min, x_max]  with N steps --------
     //
-    //  x_min = ln(dS) = ln(S_max / N)   effective lower boundary  (S = dS)
-    //  x_max = ln(S_max)                upper boundary             (S = S_max)
+    //  x_min = ln(S_min)  if S_min > 0  (down barriers: grid starts at H)
+    //        = ln(dS)     if S_min = 0  (standard options: avoid ln(0) = -inf)
+    //  x_max = ln(S_max)
     //
-    //  Why x_min = ln(dS) and not ln(0)?
-    //  S = 0 maps to x = -inf and cannot be represented on a finite grid.
-    //  We use S_1 = dS as the effective lower node.  For N = 1000, dS = 0.30,
-    //  so the approximation bc_lower(dS) ≈ bc_lower(0) is excellent.
-    //
-    //  The S-values on this log-grid are geometrically spaced:
-    //    S_i^{log} = dS * N^{i/N}   (ratio dS/S stays constant across nodes)
-    const double x_min = std::log(dS);
+    //  When S_min = H > 0 (down barrier), the log-grid spans [ln(H), ln(S_max)]
+    //  and node i=0 maps exactly to S = H — no approximation needed.
+    const double x_min = std::log(S_min > 0.0 ? S_min : dS);
     const double x_max = std::log(S_max);
     const double dx    = (x_max - x_min) / N;
 
@@ -48,22 +45,25 @@ void ReducedCN::solve(Grid& grid, const Option& opt, const BSParams& p) {
         step(V, opt, p, x_min, dx, N, dt, S_max, t_next);
     }
 
-    // -- Project solution onto the uniform S-grid ------------------------------
+    // -- Project solution onto the uniform S-grid  S_j = S_min + j*dS ---------
     //
-    //  The output grid uses S_j = j*dS (j = 0, ..., N).
-    //  For each S_j, compute x_j = ln(S_j) and interpolate linearly within
-    //  the log-grid {x_i = x_min + i*dx}.
+    //  For each S_j, compute x_j = ln(S_j) and interpolate within the log-grid.
     //
     //  Special cases:
-    //    j = 0 : S = 0 -> exact analytical BC (ln(0) is undefined)
-    //    j = 1 : x = ln(dS) = x_min -> maps exactly to V[0]
-    //    j = N : x = ln(S_max) = x_max -> maps exactly to V[N]
-    grid[0] = opt.bc_lower(0.0, T, p.r);
+    //    S_min = 0 : j=0 maps to S=0 (undefined in log-space) → use bc_lower
+    //    S_min > 0 : j=0 maps to S=H = x_min exactly → use V[0] directly
+    //    j = N     : S=S_max = x_max exactly → maps to V[N]
+    if (S_min > 0.0) {
+        grid[0] = V[0];   // S_min = H maps exactly to x_min on the log-grid
+    } else {
+        grid[0] = opt.bc_lower(0.0, T, p.r);   // S=0 → analytical BC
+    }
     for (int j = 1; j <= N; ++j) {
-        double xj    = std::log(static_cast<double>(j) * dS);
+        double Sj    = S_min + static_cast<double>(j) * dS;
+        double xj    = std::log(Sj);
         double fi    = (xj - x_min) / dx;   // fractional position in log-grid
         int    il    = iclamp(static_cast<int>(fi), 0, N - 1);
-        double alpha = fi - il;             // interpolation weight in [0, 1)
+        double alpha = fi - il;              // interpolation weight in [0, 1)
         grid[j] = (1.0 - alpha) * V[il] + alpha * V[il + 1];
     }
 }
@@ -95,7 +95,7 @@ void ReducedCN::solve(Grid& grid, const Option& opt, const BSParams& p) {
 void ReducedCN::step(std::vector<double>& V,
                      const Option&        opt,
                      const BSParams&      p,
-                     double               /*x_min*/,
+                     double               x_min,
                      double               dx,
                      int                  Nx,
                      double               dt,
@@ -137,4 +137,12 @@ void ReducedCN::step(std::vector<double>& V,
     std::vector<double> sol = ThomasAlgo::solve(lower, diag, upper, rhs);
     for (int k = 0; k < n; ++k)
         V[k + 1] = sol[k];
+
+    // -- Early-exercise projection (American options) --------------------------
+    //  Log-grid nodes are at S_i = exp(x_min + i*dx), so we recover the real
+    //  spot before applying the intrinsic-value floor.
+    for (int i = 1; i < Nx; ++i) {
+        double Si = std::exp(x_min + i * dx);
+        V[i] = std::max(V[i], opt.intrinsic(Si));
+    }
 }
