@@ -2,7 +2,7 @@
 
 ![C++](https://img.shields.io/badge/C++-17-blue)
 ![SDL2](https://img.shields.io/badge/SDL2-visualizer-blueviolet)
-![Status](https://img.shields.io/badge/status-Phase%202%20complete-success)
+![Status](https://img.shields.io/badge/status-Phase%203%20complete-success)
 
 A C++ implementation of European and exotic option pricing by solving the Black-Scholes PDE numerically,
 with two independent finite-difference schemes, full Greeks computation, analytical validation,
@@ -348,41 +348,6 @@ convergence of the Crank-Nicolson scheme.
 
 ---
 
-## Key concepts
-
-**Thomas algorithm** — solves a tridiagonal system $Ax = d$ in $O(N)$ by forward elimination
-and back substitution, replacing the $O(N^3)$ cost of general Gaussian elimination.
-
-**Crank-Nicolson** — implicit-explicit averaging achieving $O(\Delta t^2, \Delta S^2)$ accuracy
-while remaining unconditionally stable, unlike the explicit scheme which requires $\Delta t = O(\Delta S^2)$.
-
-**Log-price change of variable** — $x = \ln S$ maps variable-coefficient BS into a constant-coefficient
-PDE, eliminating the $S^2$ growth of the diffusion term and producing a geometrically-spaced grid
-with better resolution near the strike.
-
-**PDE identity for Theta** — rather than finite-differencing in time, Theta is read directly
-from the spatial operator $\mathcal{L}[V]$ via the BS PDE itself, which is both cheaper
-(no extra time slice) and more accurate.
-
-**Gibbs phenomenon** — digital payoffs have a discontinuity at the strike. Applying a smooth
-numerical scheme to a step-function boundary condition produces ringing oscillations near the strike.
-Payoff smoothing (sigmoid of width $\Delta S$) suppresses these while preserving the correct
-limiting values.
-
-**Early-exercise projection** — at each backward time step for the American put, the solution is
-projected: $V_i \leftarrow \max(V_i,\, K - S_i)$. This enforces the constraint that early exercise
-is always available, and the resulting gap above the European put is the early-exercise premium.
-
-**Dirty-flag architecture** — the visualizer separates the expensive PDE solve (`build_scene`, ~50 ms)
-from the cheap redraw (`render`, <1 ms). The solver only reruns when a parameter changes; hover
-and cursor updates run at 60 fps without triggering a re-solve.
-
-**Polymorphic design** — `Option`, `Solver`, and `GreeksCalculator` are decoupled via abstract interfaces.
-Swapping `CrankNicolson` for `ReducedCN` (or any future scheme) requires no changes to the Greeks
-or visualizer code.
-
----
-
 ## Parameters
 
 | Parameter | Default | Description |
@@ -399,24 +364,23 @@ or visualizer code.
 
 ## Roadmap
 
-**Phase 0 ✓** — European options, two finite-difference schemes, full Greeks, analytical validation.
+**Phase 1 ✓** — European options, two finite-difference schemes (CN + ReducedCN), full Greeks, analytical validation against closed-form BS formulas.
 
-**Phase 1 ✓** — Exotic options:
+**Phase 2 ✓** — Exotic options:
 - Digital Call / Put with Gibbs smoothing
 - Up-and-Out Barrier Call and Down-and-Out Barrier Put
 - American Put with early-exercise projection
 
-**Phase 2 ✓** — SDL2 interactive visualizer:
+**Phase 3 ✓** — SDL2 interactive visualizer:
 - Six display modes with real-time solver re-run on parameter change
 - Mouse hover crosshair with exact $(S, V)$ read-off on all curves
 - Solver toggle (CN ↔ Reduced CN), curve visibility toggles, Gibbs demo
 
-**Phase 3 — in progress (on hold pending market data fetcher):**
+**Phase 4 — next (on hold pending market data fetcher):**
 
 The next step is to validate the model against **real market data**: extract live option prices and implied volatilities, calibrate $\sigma$ to the market smile, and compare the CN Solver output to observed quotes.
-This phase is blocked on a separate market-data fetcher project (under development) that will supply the option chains and historical price series.
+This phase is blocked on a separate [market-data-fetcher](https://github.com/williamcheymol/market-data-fetcher) project (in development) that will supply the option chains and historical price series.
 
-Planned features once the fetcher is ready:
 - **Implied volatility extraction** — invert the BS formula to recover $\sigma_\text{impl}(K, T)$ from market option prices
 - **Volatility smile / surface** — visualize the smile and term structure of implied vol
 - **Model validation** — compare CN Solver prices to market quotes across strikes and maturities
